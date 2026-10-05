@@ -45,7 +45,7 @@ def test_recommend_filetype():
 )
 def test_recommend_chained_url(url, expected, unexpected):
     recommended = datatypes.recommend(url=url, head=False)
-    assert expected in recommended
+    assert recommended[0] is expected
     assert unexpected not in recommended
 
 

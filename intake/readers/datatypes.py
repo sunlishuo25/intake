@@ -1987,14 +1987,19 @@ def recommend(
 
     if url:
         match_url = url.lower()
-        # Pathless chained wrappers inherit the following component's path.
-        for part in match_url.split("::"):
-            if (
-                part
-                and not re.fullmatch(r"[a-z]+|.*://", part)
-                and part not in fsspec.available_protocols()
+        protocols = set(fsspec.available_protocols()) | set(fsspec.registry)
+        plain_protocols = {None, "file", "local", "http", "https"}
+        while "::" in match_url:
+            part, _, remainder = match_url.partition("::")
+            protocol, path = fsspec.core.split_protocol(part)
+            if part in protocols - plain_protocols or (
+                protocol not in plain_protocols and not path
             ):
-                match_url = part
+                # Pathless wrappers inherit the following component's path.
+                match_url = remainder
+            else:
+                if protocol in protocols - plain_protocols:
+                    match_url = part
                 break
         if fs is not None and fs.isdir(url):
             try:
@@ -2007,7 +2012,7 @@ def recommend(
         bases = set(subclasses(BaseData)) - files
         for cls in chain(files, bases):
             if cls.filepattern:
-                find = re.search(cls._filepattern(), match_url)
+                find = re.search(cls._filepattern(), match_url if cls in files else url.lower())
                 if find and not allfiles:
                     if isinstance(head, bytes):
                         head_ok_fn = getattr(cls, "_head_ok", None)
