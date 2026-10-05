@@ -1986,6 +1986,16 @@ def recommend(
                 scores[cls] = scores.get(cls, 0) + SCORE_MIME
 
     if url:
+        match_url = url.lower()
+        # Pathless chained wrappers inherit the following component's path.
+        for part in match_url.split("::"):
+            if (
+                part
+                and not re.fullmatch(r"[a-z]+|.*://", part)
+                and part not in fsspec.available_protocols()
+            ):
+                match_url = part
+                break
         if fs is not None and fs.isdir(url):
             try:
                 allfiles = fs.ls(url, detail=False)
@@ -1997,7 +2007,7 @@ def recommend(
         bases = set(subclasses(BaseData)) - files
         for cls in chain(files, bases):
             if cls.filepattern:
-                find = re.search(cls._filepattern(), url.lower())
+                find = re.search(cls._filepattern(), match_url)
                 if find and not allfiles:
                     if isinstance(head, bytes):
                         head_ok_fn = getattr(cls, "_head_ok", None)

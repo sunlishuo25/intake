@@ -1,5 +1,9 @@
 import os
+import zipfile
 
+import pytest
+
+import intake
 from intake.readers import datatypes, readers, entry
 
 here = os.path.dirname(__file__)
@@ -21,6 +25,41 @@ def test_recommend_filetype():
         p in datatypes.recommend(mime="text/yaml", head=False)
         for p in {datatypes.YAMLFile, datatypes.CatalogFile}
     )
+
+
+@pytest.mark.parametrize(
+    "url, expected, unexpected",
+    [
+        ("zip://table.csv::file:///archive.zip", datatypes.CSV, datatypes.Parquet),
+        ("zip://table.csv::https://example.com/archive.parquet", datatypes.CSV, datatypes.Parquet),
+        ("zip://table.parquet::https://example.com/archive.csv", datatypes.Parquet, datatypes.CSV),
+        (
+            "simplecache::zip://table.csv::https://example.com/archive.zip",
+            datatypes.CSV,
+            datatypes.Parquet,
+        ),
+        ("simplecache::https://example.com/table.csv", datatypes.CSV, datatypes.Parquet),
+        ("simplecache://::https://example.com/table.csv", datatypes.CSV, datatypes.Parquet),
+        ("customcache::https://example.com/table.csv", datatypes.CSV, datatypes.Parquet),
+    ],
+)
+def test_recommend_chained_url(url, expected, unexpected):
+    recommended = datatypes.recommend(url=url, head=False)
+    assert expected in recommended
+    assert unexpected not in recommended
+
+
+def test_recommend_chained_url_read(tmp_path):
+    archive = tmp_path / "archive.zip"
+    with zipfile.ZipFile(archive, "w") as z:
+        z.writestr("table.csv", "value\n1\n2\n")
+    url = f"zip://table.csv::{archive}"
+
+    datatype = intake.recommend(url)[0]
+    reader = datatype(url).to_reader(outtype="pandas:DataFrame")
+    assert isinstance(reader, readers.PandasCSV)
+    assert reader.data.url == url
+    assert reader.read()["value"].tolist() == [1, 2]
 
 
 def test_recommend_reader():
